@@ -112,6 +112,7 @@ func (b *Work) writer() io.Writer {
 func (b *Work) Init() {
 	b.initOnce.Do(func() {
 		//从这里大概可以认为，hey最多统计1000000个结果，且每个C最多统计1000个结果
+		//上面的解释是错误的，但是的确限制了最大统计结果：常量 maxRes
 		b.results = make(chan *result, min(b.C*1000, maxResult))
 		//每个C才实际拥有http链接
 		b.stopCh = make(chan struct{}, b.C)
@@ -149,7 +150,6 @@ func (b *Work) Finish() {
 }
 
 func (b *Work) makeRequest(c *http.Client) {
-	s := now()
 	var size int64
 	var code int
 	var dnsStart, connStart, resStart, reqStart, delayStart time.Duration
@@ -192,6 +192,7 @@ func (b *Work) makeRequest(c *http.Client) {
 		//},
 	}
 	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
+	s := now()
 	resp, err := c.Do(req)
 	if err == nil {
 		size = resp.ContentLength

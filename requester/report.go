@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"sort"
 	"time"
 )
@@ -28,14 +29,18 @@ const (
 )
 
 // We report for max 1M results.
-const maxRes = 1000000
+//const maxRes = 1000000
+//1M的数据，后面的算法会导致超过这个数据的计算出现严重错误
+const maxRes = math.MaxUint32
 
 type report struct {
-	avgTotal float64
-	fastest  float64
-	slowest  float64
-	average  float64
-	rps      float64
+	avgTotal     float64
+	fastest      float64
+	slowest      float64
+	fastestDelay float64
+	slowestDelay float64
+	average      float64
+	rps          float64
 
 	avgConn     float64
 	avgDNS      float64
@@ -119,12 +124,18 @@ func runReporter(r *report) {
 func (r *report) finalize(total time.Duration) {
 	r.total = total
 	r.rps = float64(r.numRes) / r.total.Seconds()
-	r.average = r.avgTotal / float64(len(r.lats))
-	r.avgConn = r.avgConn / float64(len(r.lats))
-	r.avgDelay = r.avgDelay / float64(len(r.lats))
-	r.avgDNS = r.avgDNS / float64(len(r.lats))
-	r.avgReq = r.avgReq / float64(len(r.lats))
-	r.avgRes = r.avgRes / float64(len(r.lats))
+	//r.average = r.avgTotal / float64(len(r.lats))
+	//r.avgConn = r.avgConn / float64(len(r.lats))
+	//r.avgDelay = r.avgDelay / float64(len(r.lats))
+	//r.avgDNS = r.avgDNS / float64(len(r.lats))
+	//r.avgReq = r.avgReq / float64(len(r.lats))
+	//r.avgRes = r.avgRes / float64(len(r.lats))
+	r.average = r.avgTotal / float64(r.numRes)
+	r.avgConn = r.avgConn / float64(r.numRes)
+	r.avgDelay = r.avgDelay / float64(r.numRes)
+	r.avgDNS = r.avgDNS / float64(r.numRes)
+	r.avgReq = r.avgReq / float64(r.numRes)
+	r.avgRes = r.avgRes / float64(r.numRes)
 	r.print()
 }
 
@@ -194,8 +205,13 @@ func (r *report) snapshot() Report {
 	sort.Float64s(r.resLats)
 	sort.Float64s(r.delayLats)
 
-	snapshot.Histogram = r.histogram()
-	snapshot.LatencyDistribution = r.latencies()
+	r.fastestDelay = r.delayLats[0]
+	r.slowestDelay = r.delayLats[len(r.lats)-1]
+
+	snapshot.Histogram = r.histogramDelay()
+	snapshot.LatencyDistribution = r.latenciesDelay()
+	//snapshot.Histogram = r.histogram()
+	//snapshot.LatencyDistribution = r.latencies()
 
 	snapshot.Fastest = r.fastest
 	snapshot.Slowest = r.slowest
@@ -219,6 +235,26 @@ func (r *report) snapshot() Report {
 	return snapshot
 }
 
+func (r *report) latenciesDelay() []LatencyDistribution {
+	pctls := []int{10, 25, 50, 75, 90, 95, 99}
+	data := make([]float64, len(pctls))
+	j := 0
+	for i := 0; i < len(r.lats) && j < len(pctls); i++ {
+		current := i * 100 / len(r.lats)
+		if current >= pctls[j] {
+			data[j] = r.delayLats[i]
+			j++
+		}
+	}
+	res := make([]LatencyDistribution, len(pctls))
+	for i := 0; i < len(pctls); i++ {
+		if data[i] > 0 {
+			res[i] = LatencyDistribution{Percentage: pctls[i], Latency: data[i]}
+		}
+	}
+	return res
+}
+
 func (r *report) latencies() []LatencyDistribution {
 	pctls := []int{10, 25, 50, 75, 90, 95, 99}
 	data := make([]float64, len(pctls))
@@ -234,6 +270,39 @@ func (r *report) latencies() []LatencyDistribution {
 	for i := 0; i < len(pctls); i++ {
 		if data[i] > 0 {
 			res[i] = LatencyDistribution{Percentage: pctls[i], Latency: data[i]}
+		}
+	}
+	return res
+}
+
+func (r *report) histogramDelay() []Bucket {
+	bc := 10
+	buckets := make([]float64, bc+1)
+	counts := make([]int, bc+1)
+	bs := (r.slowestDelay - r.fastestDelay) / float64(bc)
+	for i := 0; i < bc; i++ {
+		buckets[i] = r.fastestDelay + bs*float64(i)
+	}
+	buckets[bc] = r.slowestDelay
+	var bi int
+	var max int
+	for i := 0; i < len(r.lats); {
+		if r.delayLats[i] <= buckets[bi] {
+			i++
+			counts[bi]++
+			if max < counts[bi] {
+				max = counts[bi]
+			}
+		} else if bi < len(buckets)-1 {
+			bi++
+		}
+	}
+	res := make([]Bucket, len(buckets))
+	for i := 0; i < len(buckets); i++ {
+		res[i] = Bucket{
+			Mark:      buckets[i],
+			Count:     counts[i],
+			Frequency: float64(counts[i]) / float64(len(r.lats)),
 		}
 	}
 	return res
