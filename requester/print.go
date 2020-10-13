@@ -54,6 +54,7 @@ func newTemplate(output string) *template.Template {
 }
 
 var tmplFuncMap = template.FuncMap{
+	"formatString":    formatString,
 	"formatNumber":    formatNumber,
 	"formatNumberInt": formatNumberInt,
 	"histogram":       histogram,
@@ -63,6 +64,10 @@ var tmplFuncMap = template.FuncMap{
 func jsonify(v interface{}) string {
 	d, _ := json.Marshal(v)
 	return string(d)
+}
+
+func formatString(text string) string {
+	return text
 }
 
 func formatNumber(duration float64) string {
@@ -123,6 +128,6 @@ Status code distribution:{{ range $code, $num := .StatusCodeDist }}
 {{ if gt (len .ErrorDist) 0 }}Error distribution:{{ range $err, $num := .ErrorDist }}
   [{{ $num }}]	{{ $err }}{{ end }}{{ end }}
 `
-	csvTmpl = `{{ $connLats := .ConnLats }}{{ $dnsLats := .DnsLats }}{{ $dnsLats := .DnsLats }}{{ $reqLats := .ReqLats }}{{ $delayLats := .DelayLats }}{{ $resLats := .ResLats }}{{ $statusCodeLats := .StatusCodes }}{{ $offsets := .Offsets}}response-time,DNS+dialup,DNS,Request-write,Response-delay,Response-read,status-code,offset{{ range $i, $v := .Lats }}
-{{ formatNumber $v }},{{ formatNumber (index $connLats $i) }},{{ formatNumber (index $dnsLats $i) }},{{ formatNumber (index $reqLats $i) }},{{ formatNumber (index $delayLats $i) }},{{ formatNumber (index $resLats $i) }},{{ formatNumberInt (index $statusCodeLats $i) }},{{ formatNumber (index $offsets $i) }}{{ end }}`
+	csvTmpl = `{{ $connLats := .ConnLats }}{{ $dnsLats := .DnsLats }}{{ $dnsLats := .DnsLats }}{{ $reqLats := .ReqLats }}{{ $delayLats := .DelayLats }}{{ $resLats := .ResLats }}{{ $statusCodeLats := .StatusCodes }}{{ $offsets := .Offsets}}{{ $bodies := .Bodies}}response-time,DNS+dialup,DNS,Request-write,Response-delay,Response-read,status-code,offset,body{{ range $i, $v := .Lats }}
+{{ formatNumber $v }},{{ formatNumber (index $connLats $i) }},{{ formatNumber (index $dnsLats $i) }},{{ formatNumber (index $reqLats $i) }},{{ formatNumber (index $delayLats $i) }},{{ formatNumber (index $resLats $i) }},{{ formatNumberInt (index $statusCodeLats $i) }},{{ formatNumber (index $offsets $i) }},{{ formatString (index $bodies $i) }}{{ end }}`
 )

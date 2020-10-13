@@ -45,6 +45,7 @@ type result struct {
 	resDuration   time.Duration // response "read" duration
 	delayDuration time.Duration // delay between response and request
 	contentLength int64
+	body          string
 }
 
 type Work struct {
@@ -110,7 +111,9 @@ func (b *Work) writer() io.Writer {
 // Init initializes internal data-structures
 func (b *Work) Init() {
 	b.initOnce.Do(func() {
+		//从这里大概可以认为，hey最多统计1000000个结果，且每个C最多统计1000个结果
 		b.results = make(chan *result, min(b.C*1000, maxResult))
+		//每个C才实际拥有http链接
 		b.stopCh = make(chan struct{}, b.C)
 	})
 }
@@ -131,6 +134,7 @@ func (b *Work) Run() {
 
 func (b *Work) Stop() {
 	// Send stop signal so that workers can stop gracefully.
+	//卧槽stop函数如此的简洁
 	for i := 0; i < b.C; i++ {
 		b.stopCh <- struct{}{}
 	}
@@ -150,10 +154,13 @@ func (b *Work) makeRequest(c *http.Client) {
 	var code int
 	var dnsStart, connStart, resStart, reqStart, delayStart time.Duration
 	var dnsDuration, connDuration, resDuration, reqDuration, delayDuration time.Duration
+	var body []byte
+	//var wroteHeadersStart time.Duration
 	var req *http.Request
 	if b.RequestFunc != nil {
 		req = b.RequestFunc()
 	} else {
+		//deep赋值一份http.requester
 		req = cloneRequest(b.Request, b.RequestBody)
 	}
 	trace := &httptrace.ClientTrace{
@@ -180,16 +187,25 @@ func (b *Work) makeRequest(c *http.Client) {
 			delayDuration = now() - delayStart
 			resStart = now()
 		},
+		//WroteHeaders: func() {
+		//	wroteHeadersStart=now()
+		//},
 	}
 	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
 	resp, err := c.Do(req)
 	if err == nil {
 		size = resp.ContentLength
 		code = resp.StatusCode
-		io.Copy(ioutil.Discard, resp.Body)
+		//io.Copy(ioutil.Discard, resp.Body)
+		body, _ = ioutil.ReadAll(resp.Body)
 		resp.Body.Close()
 	}
 	t := now()
+	//println("dnsStart:",dnsStart)
+	//println("connStart:",connStart)
+	//println("resStart:",resStart)
+	//println("delayStart:",delayStart)
+	//println("wroteHeadersStart:",wroteHeadersStart)
 	resDuration = t - resStart
 	finish := t - s
 	b.results <- &result{
@@ -203,11 +219,13 @@ func (b *Work) makeRequest(c *http.Client) {
 		reqDuration:   reqDuration,
 		resDuration:   resDuration,
 		delayDuration: delayDuration,
+		body:          string(body),
 	}
 }
 
 func (b *Work) runWorker(client *http.Client, n int) {
-	var throttle <-chan time.Time
+	//throttle是一个打点器，根据QPS向通道中写入数据
+	var throttle <-chan time.Time //单向通道，定义单向通道的函数是可以读写的，其他函数只能读或者写
 	if b.QPS > 0 {
 		throttle = time.Tick(time.Duration(1e6/(b.QPS)) * time.Microsecond)
 	}
@@ -224,6 +242,8 @@ func (b *Work) runWorker(client *http.Client, n int) {
 			return
 		default:
 			if b.QPS > 0 {
+				//只有打点器收到了消息，才能发起下一个请求，但是注意，这里只能起到一个限速左右，如果要求的
+				//QPS过高或者说，单次请求的延迟太高，都是没办法的，因此这个参数的意义是限制在这个QPS之内
 				<-throttle
 			}
 			b.makeRequest(client)
@@ -232,6 +252,7 @@ func (b *Work) runWorker(client *http.Client, n int) {
 }
 
 func (b *Work) runWorkers() {
+	//一个C就是一个worker，每个C分(N/C)个请求
 	var wg sync.WaitGroup
 	wg.Add(b.C)
 

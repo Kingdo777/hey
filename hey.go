@@ -114,18 +114,26 @@ func main() {
 		usageAndExit("")
 	}
 
+	//cpus参数对应了Go语言的系统参数GOMAXPROCS，该参数决定了P的个数，一定程度上限制了goroutine对CPU数目的使用，默认情况下其值与系统的
+	//逻辑core数目保持一致
 	runtime.GOMAXPROCS(*cpus)
+	//发起请求的总个数
 	num := *n
+	//并发度，保持同一时间内维持多少个连接
 	conc := *c
+	//qps,保持每秒的发送速率
 	q := *q
+	//测试持续时间
 	dur := *z
 
 	if dur > 0 {
+		//当，不为0，那么n的存在就没有意义，此时将其重置为最大值
 		num = math.MaxInt32
 		if conc <= 0 {
 			usageAndExit("-c cannot be smaller than 1.")
 		}
 	} else {
+		//否则，那么num和conc的值必须大于0，且conc不能小于num，这是很显然的
 		if num <= 0 || conc <= 0 {
 			usageAndExit("-n and -c cannot be smaller than 1.")
 		}
@@ -135,6 +143,7 @@ func main() {
 		}
 	}
 
+	//url是hey命令的传入参数，而其他的都是option，注意区分
 	url := flag.Args()[0]
 	method := strings.ToUpper(*m)
 
@@ -226,14 +235,17 @@ func main() {
 		ProxyAddr:          proxyURL,
 		Output:             *output,
 	}
+	//w.run()函数的第一句就是执行此从初始化函数
 	w.Init()
 
+	//这里指的应该是Ctrl+C这样的命令，作为和dur到时间一样的中断执行的一种方案
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	go func() {
 		<-c
 		w.Stop()
 	}()
+	//如果dur没有设置，那么w.run(),将根据num的数目来终止
 	if dur > 0 {
 		go func() {
 			time.Sleep(dur)
