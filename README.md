@@ -9,11 +9,17 @@ tool at [tarekziade/boom](https://github.com/tarekziade/boom). Using the same na
 where binary name conflicts created confusion.
 To preserve the name for its original owner, we renamed this project to hey.
 
+## 改进
+
+* 添加了在csv输出模式的情况下，同时记录respond内容的功能，不过没有像vegeta那样进行编码的处理
+* 修改了当数据量超过1M时，延迟统计会出现很大的Bug，并将存放结果的容器从1M扩大到maxint32
+* 将延迟的分布统计修改为以res-wait为统计标准，而非总的路径时间
+
 ## Installation
 
-* Linux 64-bit: https://storage.googleapis.com/hey-release/hey_linux_amd64
-* Mac 64-bit: https://storage.googleapis.com/hey-release/hey_darwin_amd64
-* Windows 64-bit: https://storage.googleapis.com/hey-release/hey_windows_amd64
+```
+go get -u github.com/Kingdo777/hey
+```
 
 ### Package Managers
 
@@ -62,5 +68,3 @@ Options:
   -cpus                 Number of used cpu cores.
                         (default for current machine is 8 cores)
 ```
-
-Previously known as [github.com/rakyll/boom](https://github.com/rakyll/boom).
