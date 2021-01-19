@@ -29,7 +29,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rakyll/hey/requester"
+	"github.com/Kingdo777/hey/requester"
 )
 
 const (
@@ -66,6 +66,8 @@ var (
 )
 
 var usage = `Usage: hey [options...] <url>
+
+Version: Kingdo
 
 Options:
   -n  Number of requests to run. Default is 200.
